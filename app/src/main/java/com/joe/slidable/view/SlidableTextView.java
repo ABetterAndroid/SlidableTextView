@@ -2,8 +2,10 @@ package com.joe.slidable.view;
 
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.util.AttributeSet;
@@ -20,8 +22,9 @@ import android.widget.TextView;
 
 public class SlidableTextView extends TextView {
 
-    private float canvasTranslate;
+    private float canvasTranslation;
     float x1 = 0;
+    float y1 = 0;
     private Rect leftRect;
     private Rect rightRect;
     private Paint paint;
@@ -30,13 +33,26 @@ public class SlidableTextView extends TextView {
     private float xVel;
     private ValueAnimator smoothAnim;
     private boolean slideRight = false;
+    private boolean rightSlideEnabled = true;
+    private boolean leftSlideEnabled = true;
+    private boolean otherLeftSidable = true;
+    private boolean otherRightSidable = true;
+    private Bitmap icon;
+    private int height;
+    private boolean slided = false;
+    private OnIconClickListener onIconClickListener;
 
     public SlidableTextView(Context context) {
         super(context);
+        prepare(context);
     }
 
     public SlidableTextView(Context context, AttributeSet attrs) {
         super(context, attrs);
+        prepare(context);
+    }
+
+    private void prepare(Context context) {
         setLongClickable(true);
         initPaint();
         mMaximumVelocity = ViewConfiguration.get(context)
@@ -50,15 +66,50 @@ public class SlidableTextView extends TextView {
         paint.setStyle(Paint.Style.FILL);
     }
 
+    public SlidableTextView setIcon(Bitmap icon) {
+        this.icon = icon;
+        invalidate();
+        return this;
+    }
+
+    public SlidableTextView setOnIconClickListener(OnIconClickListener onIconClickListener) {
+        this.onIconClickListener = onIconClickListener;
+        return this;
+    }
+
+    public SlidableTextView setRightSlideEnabled(boolean rightSlideEnabled) {
+        this.rightSlideEnabled = rightSlideEnabled;
+        return this;
+    }
+
+    public SlidableTextView setLeftSlideEnabled(boolean leftSlideEnabled) {
+        this.leftSlideEnabled = leftSlideEnabled;
+        return this;
+    }
+
+    private void resizeIcon() {
+        Matrix matrix = new Matrix();
+        float scale;
+        matrix.setScale(scale = 1.3f * height / 3f / icon.getHeight(), scale);
+        int width = icon.getWidth();
+        int height = icon.getHeight();
+        this.icon = Bitmap.createBitmap(icon, 0, 0, width, height, matrix, false);
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         canvas.save();
-        Log.i("canvasTranslate ", canvasTranslate + "");
-        canvas.translate(canvasTranslate, 0);
+        Log.i("canvasTranslation ", canvasTranslation + "");
+        canvas.translate(canvasTranslation, 0);
 
         super.onDraw(canvas);
         canvas.drawRect(leftRect, paint);
         canvas.drawRect(rightRect, paint);
+
+        if (icon != null) {
+            canvas.drawBitmap(icon, leftRect.centerX() / 2 - icon.getWidth() / 2, leftRect.centerY() - icon.getHeight() / 2, paint);
+            canvas.drawBitmap(icon, rightRect.centerX() - rightRect.width() / 4 - icon.getWidth() / 2, rightRect.centerY() - icon.getHeight() / 2, paint);
+        }
 
         canvas.restore();
     }
@@ -66,14 +117,63 @@ public class SlidableTextView extends TextView {
     @Override
     public boolean onTouchEvent(MotionEvent event) {
 
-        float deltaX = 0;
+        float deltaX;
         float x2;
+        float y2;
+
+        if (canvasTranslation > 0) {
+            otherLeftSidable = false;
+        } else if (canvasTranslation < 0) {
+            otherRightSidable = false;
+        }
 
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
                 x1 = event.getX();
+                y1 = event.getY();
+
                 break;
             case MotionEvent.ACTION_MOVE:
+
+                x2 = event.getX();
+                y2 = event.getY();
+
+                if (canvasTranslation == 0 && slided) {
+                    x1 = x2;
+                    y1 = y2;
+                    slided = false;
+                    return super.onTouchEvent(event);
+                }
+
+                if (canvasTranslation > 0 && x1 < canvasTranslation) {
+                    x1 = x2;
+                    y1 = y2;
+                    return super.onTouchEvent(event);
+                }
+
+                if (canvasTranslation < 0 && x1 > (getMeasuredWidth() + canvasTranslation)) {
+                    x1 = x2;
+                    y1 = y2;
+                    return super.onTouchEvent(event);
+                }
+
+                if (!rightSlideEnabled && canvasTranslation == 0 && x2 - x1 > 0) {
+                    x1 = x2;
+                    y1 = y2;
+                    return super.onTouchEvent(event);
+                }
+
+                if (!leftSlideEnabled && canvasTranslation == 0 && x2 - x1 < 0) {
+                    x1 = x2;
+                    y1 = y2;
+                    return super.onTouchEvent(event);
+                }
+
+                if (Math.abs(y2 - y1) > Math.abs(x2 - x1)) {
+                    x1 = x2;
+                    y1 = y2;
+                    return super.onTouchEvent(event);
+                }
 
                 if (smoothAnim != null && smoothAnim.isRunning()) {
                     smoothAnim.cancel();
@@ -83,38 +183,50 @@ public class SlidableTextView extends TextView {
                 mVelocityTracker.computeCurrentVelocity(1, mMaximumVelocity);
                 xVel = mVelocityTracker.getXVelocity();
 
-                x2 = event.getX();
                 deltaX = x2 - x1;
                 slideRight = deltaX > 0;
-                Log.i("deltaX ", slideRight + " " + deltaX);
                 x1 = x2;
-                canvasTranslate += deltaX;
-                if (canvasTranslate > getMeasuredWidth() / 2) {
-                    canvasTranslate = getMeasuredWidth() / 2;
-                } else if (canvasTranslate < -getMeasuredWidth() / 2) {
-                    canvasTranslate = -getMeasuredWidth() / 2;
+                y1 = y2;
+                canvasTranslation += deltaX;
+                slided = true;
+                if (canvasTranslation > getMeasuredWidth() / 2) {
+                    canvasTranslation = getMeasuredWidth() / 2;
+                } else if (canvasTranslation < -getMeasuredWidth() / 2) {
+                    canvasTranslation = -getMeasuredWidth() / 2;
                 }
+
+                canvasTranslation = (!rightSlideEnabled || !otherRightSidable) && canvasTranslation > 0 ? 0 : canvasTranslation;
+                canvasTranslation = (!leftSlideEnabled || !otherLeftSidable) && canvasTranslation < 0 ? 0 : canvasTranslation;
 
                 invalidate();
                 return true;
             case MotionEvent.ACTION_UP:
+
+                otherRightSidable = otherLeftSidable = true;
+
                 float endValue = 0;
                 long flingDuration = 200;
-                Log.i("deltaX up ", slideRight + " " + deltaX);
-                if ((canvasTranslate > getMeasuredWidth() / 16 && slideRight) || canvasTranslate > 7 * getMeasuredWidth() / 16) {
-                    flingDuration = (long) Math.abs((getMeasuredWidth() / 2 - canvasTranslate) / xVel);
+                if ((canvasTranslation > getMeasuredWidth() / 16 && slideRight) || canvasTranslation > 7 * getMeasuredWidth() / 16) {
+                    flingDuration = (long) Math.abs((getMeasuredWidth() / 2 - canvasTranslation) / xVel);
                     flingDuration = flingDuration > 200 ? 200 : flingDuration;
                     endValue = getMeasuredWidth() / 2;
-                } else if (canvasTranslate > 0 && canvasTranslate < 7 * getMeasuredWidth() / 16 && !slideRight) {
+                } else if (canvasTranslation > 0 && canvasTranslation < 7 * getMeasuredWidth() / 16 && !slideRight) {
                     endValue = 0;
-                } else if ((canvasTranslate < -getMeasuredWidth() / 16 && !slideRight) || canvasTranslate < -7 * getMeasuredWidth() / 16) {
-                    flingDuration = (long) Math.abs((-getMeasuredWidth() / 2 - canvasTranslate) / xVel);
+                } else if ((canvasTranslation < -getMeasuredWidth() / 16 && !slideRight) || canvasTranslation < -7 * getMeasuredWidth() / 16) {
+                    flingDuration = (long) Math.abs((-getMeasuredWidth() / 2 - canvasTranslation) / xVel);
                     flingDuration = flingDuration > 200 ? 200 : flingDuration;
                     endValue = -getMeasuredWidth() / 2;
-                } else if (canvasTranslate < 0 && canvasTranslate > -7 * getMeasuredWidth() / 16 && slideRight) {
+                } else if (canvasTranslation < 0 && canvasTranslation > -7 * getMeasuredWidth() / 16 && slideRight) {
                     endValue = 0;
                 }
-                smoothToEnd(canvasTranslate, endValue, flingDuration);
+
+                if (onIconClickListener != null && ((canvasTranslation == getMeasuredWidth() / 2 && event.getX() < canvasTranslation) || (canvasTranslation == -getMeasuredWidth() / 2 && event.getX() > getMeasuredWidth() + canvasTranslation))) {
+                    onIconClickListener.onIconClick();
+                    endValue = 0;
+                    flingDuration = 200;
+                }
+
+                smoothToEnd(canvasTranslation, endValue, flingDuration);
                 break;
         }
 
@@ -128,7 +240,7 @@ public class SlidableTextView extends TextView {
         smoothAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator animation) {
-                canvasTranslate = (float) animation.getAnimatedValue();
+                canvasTranslation = (float) animation.getAnimatedValue();
                 invalidate();
             }
         });
@@ -137,6 +249,10 @@ public class SlidableTextView extends TextView {
 
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        this.height = h;
+        if (h > 0) {
+            resizeIcon();
+        }
         leftRect = new Rect(-w, 0, 0, h);
         rightRect = new Rect(w, 0, 2 * w, h);
     }
@@ -149,4 +265,9 @@ public class SlidableTextView extends TextView {
             mVelocityTracker = null;
         }
     }
+
+    public interface OnIconClickListener {
+        void onIconClick();
+    }
+
 }

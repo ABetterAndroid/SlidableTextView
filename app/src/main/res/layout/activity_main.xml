@@ -13,6 +13,7 @@
     <com.joe.slidable.view.SlidableTextView
         android:layout_width="150dp"
         android:layout_height="50dp"
+        android:id="@+id/slidable_tv"
         android:gravity="center"
         android:text="Hello World!"
         android:background="#228896"/>
