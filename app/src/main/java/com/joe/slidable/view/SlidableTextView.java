@@ -20,17 +20,16 @@ import android.widget.TextView;
 
 public class SlidableTextView extends TextView {
 
-    private float deltaX;
     private float canvasTranslate;
-    private int scaledTouchSlop;
     float x1 = 0;
     private Rect leftRect;
     private Rect rightRect;
     private Paint paint;
     private VelocityTracker mVelocityTracker;
-    private int mMaximumVelocity, mMinimumVelocity;
+    private int mMaximumVelocity;
     private float xVel;
     private ValueAnimator smoothAnim;
+    private boolean slideRight = false;
 
     public SlidableTextView(Context context) {
         super(context);
@@ -38,13 +37,10 @@ public class SlidableTextView extends TextView {
 
     public SlidableTextView(Context context, AttributeSet attrs) {
         super(context, attrs);
-        scaledTouchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
         setLongClickable(true);
         initPaint();
         mMaximumVelocity = ViewConfiguration.get(context)
                 .getScaledMaximumFlingVelocity();
-        mMinimumVelocity = ViewConfiguration.get(context)
-                .getScaledMinimumFlingVelocity();
         mVelocityTracker = VelocityTracker.obtain();
     }
 
@@ -70,9 +66,8 @@ public class SlidableTextView extends TextView {
     @Override
     public boolean onTouchEvent(MotionEvent event) {
 
-
-
-        float x2 = 0;
+        float deltaX = 0;
+        float x2;
 
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
@@ -90,8 +85,8 @@ public class SlidableTextView extends TextView {
 
                 x2 = event.getX();
                 deltaX = x2 - x1;
-                Log.i("deltaX ", deltaX + "");
-                Log.i("X ", x2 + " " + x1);
+                slideRight = deltaX > 0;
+                Log.i("deltaX ", slideRight + " " + deltaX);
                 x1 = x2;
                 canvasTranslate += deltaX;
                 if (canvasTranslate > getMeasuredWidth() / 2) {
@@ -104,13 +99,19 @@ public class SlidableTextView extends TextView {
                 return true;
             case MotionEvent.ACTION_UP:
                 float endValue = 0;
-                long flingDuration = 0;
-                if (canvasTranslate > getMeasuredWidth() / 4) {
+                long flingDuration = 200;
+                Log.i("deltaX up ", slideRight + " " + deltaX);
+                if ((canvasTranslate > getMeasuredWidth() / 16 && slideRight) || canvasTranslate > 7 * getMeasuredWidth() / 16) {
                     flingDuration = (long) Math.abs((getMeasuredWidth() / 2 - canvasTranslate) / xVel);
                     flingDuration = flingDuration > 200 ? 200 : flingDuration;
                     endValue = getMeasuredWidth() / 2;
-                } else if (canvasTranslate > 0 && canvasTranslate < getMeasuredWidth() / 4) {
-                    flingDuration = 200;
+                } else if (canvasTranslate > 0 && canvasTranslate < 7 * getMeasuredWidth() / 16 && !slideRight) {
+                    endValue = 0;
+                } else if ((canvasTranslate < -getMeasuredWidth() / 16 && !slideRight) || canvasTranslate < -7 * getMeasuredWidth() / 16) {
+                    flingDuration = (long) Math.abs((-getMeasuredWidth() / 2 - canvasTranslate) / xVel);
+                    flingDuration = flingDuration > 200 ? 200 : flingDuration;
+                    endValue = -getMeasuredWidth() / 2;
+                } else if (canvasTranslate < 0 && canvasTranslate > -7 * getMeasuredWidth() / 16 && slideRight) {
                     endValue = 0;
                 }
                 smoothToEnd(canvasTranslate, endValue, flingDuration);
@@ -138,5 +139,14 @@ public class SlidableTextView extends TextView {
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         leftRect = new Rect(-w, 0, 0, h);
         rightRect = new Rect(w, 0, 2 * w, h);
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        if (mVelocityTracker != null) {
+            mVelocityTracker.recycle();
+            mVelocityTracker = null;
+        }
     }
 }
